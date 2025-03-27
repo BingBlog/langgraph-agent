@@ -2,7 +2,7 @@ import { multiAgentWorkflow } from "./workflow.js";
 
 async function test() {
   try {
-    const input = "请分析人工智能在医疗领域的应用现状和未来发展趋势，并生成一份详细报告。";
+    const input = "请分析人工智能在数据分析领域的应用现状和未来发展趋势，并生成一份详细报告。";
     console.log("Input:", input);
     
     const result = await multiAgentWorkflow.run(input);

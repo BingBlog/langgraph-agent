@@ -26,6 +26,7 @@ export class TriviaSearchTool extends Tool {
       }
 
       const data = await response.json();
+      console.log('trivia search result', data);
       return JSON.stringify(data);
     } catch (error) {
       return `Error searching TRIVIA: ${error}`;

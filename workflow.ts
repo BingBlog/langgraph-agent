@@ -11,14 +11,17 @@ const WorkflowState = Annotation.Root({
   report: Annotation<string>(),
 });
 
-// Helper function to handle errors
-const safeInvoke = async (agent: any, input: any, defaultValue: string, stepName: string) => {
+// Helper function to handle errors and ensure data is properly JSON stringified
+const ensureJSONString = (data: any): string => {
+  if (typeof data === 'string') {
+    return data;
+  }
+  
   try {
-    const result = await agent.invoke(input);
-    return result;
+    return JSON.stringify(data);
   } catch (error) {
-    console.error(`Error in ${stepName}:`, error);
-    return defaultValue;
+    console.error("Error stringifying data:", error);
+    return JSON.stringify({ error: "Failed to process data" });
   }
 };
 
@@ -28,7 +31,7 @@ const workflow = new StateGraph(WorkflowState)
     console.log("\nStep 1: Planning...");
     try {
       const result = await plannerAgent.invoke({ input: state.input });
-      return { plan: result };
+      return { plan: ensureJSONString(result) };
     } catch (error) {
       console.error("Error in planning step:", error);
       // Return a default plan in case of error
@@ -51,7 +54,7 @@ const workflow = new StateGraph(WorkflowState)
     console.log("\nStep 2: Knowledge Retrieval...");
     try {
       const result = await knowledgeAgent.invoke({ plan: state.plan });
-      return { knowledge: result };
+      return { knowledge: ensureJSONString(result) };
     } catch (error) {
       console.error("Error in knowledge retrieval step:", error);
       // Return default knowledge in case of error
@@ -67,8 +70,9 @@ const workflow = new StateGraph(WorkflowState)
   .addNode("analysisNode", async (state) => {
     console.log("\nStep 3: Analysis...");
     try {
+      console.log("Passing knowledge to analysis agent, type:", typeof state.knowledge);
       const result = await analysisAgent.invoke({ knowledge: state.knowledge });
-      return { analysis: result };
+      return { analysis: ensureJSONString(result) };
     } catch (error) {
       console.error("Error in analysis step:", error);
       // Return default analysis in case of error
@@ -90,7 +94,7 @@ const workflow = new StateGraph(WorkflowState)
         knowledge: state.knowledge,
         analysis: state.analysis
       });
-      return { report: result };
+      return { report: ensureJSONString(result) };
     } catch (error) {
       console.error("Error in report generation step:", error);
       // Return default report in case of error
