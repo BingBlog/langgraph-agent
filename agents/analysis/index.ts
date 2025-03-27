@@ -3,149 +3,190 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import { RunnableSequence } from "@langchain/core/runnables";
 import { model, triviaTool } from "../shared.js";
 
-// Helper function to extract JSON from potential markdown code blocks
-function extractJSON(text: any): string {
-  // Ensure text is a string
-  if (typeof text !== 'string') {
-    console.warn('extractJSON received non-string input:', typeof text);
-    // Convert to string if possible, or return empty string
-    if (text === null || text === undefined) {
+// Types for data structures
+interface AnalysisInput {
+  knowledge: any;
+  [key: string]: any;
+}
+
+interface KnowledgeResult {
+  title?: string;
+  query?: string;
+  [key: string]: any;
+}
+
+interface AnalysisOutput {
+  data_summary: string;
+  analysis_results: {
+    market_size: string;
+    growth_rate: string;
+    key_trends: string[];
+  };
+  insights: string[];
+  data_limitations?: string;
+}
+
+/**
+ * Extracts JSON from text, handling various input formats including markdown code blocks
+ */
+function extractJSON(input: any): string {
+  // Handle non-string inputs
+  if (typeof input !== 'string') {
+    if (input === null || input === undefined) {
       return '';
     }
     
-    // If it's an object, try to stringify it
-    if (typeof text === 'object') {
+    if (typeof input === 'object') {
       try {
-        return JSON.stringify(text);
-      } catch (e) {
-        console.error('Failed to stringify object in extractJSON:', e);
+        return JSON.stringify(input);
+      } catch {
         return '';
       }
     }
     
-    // Fallback to String constructor
-    return String(text || '');
+    return String(input || '');
   }
 
-  // Try to extract JSON from markdown code blocks
+  // Extract JSON from markdown code blocks if present
   const jsonRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
-  const match = text.match(jsonRegex);
+  const match = input.match(jsonRegex);
   
-  if (match && match[1]) {
-    return match[1].trim();
-  }
-  
-  // If no code block is found, return the original text
-  return text;
+  return match && match[1] ? match[1].trim() : input;
 }
 
-// 数据分析 Agent
+/**
+ * Fallback analysis output when JSON parsing fails
+ */
+function getDefaultAnalysisOutput(): AnalysisOutput {
+  return {
+    data_summary: "Analysis of AI in data analysis applications",
+    analysis_results: {
+      market_size: "Growing market with significant potential",
+      growth_rate: "Rapid growth expected in coming years",
+      key_trends: ["Automated data processing", "Pattern recognition", "Predictive analytics"]
+    },
+    insights: ["AI is transforming data analysis workflows", "Future applications will focus on automated insights generation"],
+    data_limitations: "Limited current data available"
+  };
+}
+
+/**
+ * Process input data and extract knowledge
+ */
+function processKnowledgeData(input: AnalysisInput): any {
+  try {
+    if (typeof input.knowledge === 'object') {
+      return input.knowledge;
+    }
+    
+    const jsonStr = extractJSON(input.knowledge);
+    return JSON.parse(jsonStr);
+  } catch (error) {
+    // If parsing fails, extract key terms from text
+    const knowledgeText = typeof input.knowledge === 'string' 
+      ? input.knowledge 
+      : extractJSON(input.knowledge);
+      
+    const searchTerms = knowledgeText
+      .replace(/```.*?```/gs, "")
+      .split(/\s+/)
+      .filter((term: string) => term.length > 3)
+      .slice(0, 5)
+      .join(" ");
+    
+    return { 
+      results: [{ title: searchTerms || "AI data analysis applications" }]
+    };
+  }
+}
+
+/**
+ * Extract key terms for search from knowledge data
+ */
+function extractKeyTerms(knowledgeData: any): string {
+  try {
+    if (!knowledgeData.results) {
+      return "AI data analysis applications";
+    }
+    
+    const terms = knowledgeData.results
+      .map((result: KnowledgeResult) => result.title || result.query || "")
+      .join(" ")
+      .trim();
+      
+    return terms || "AI data analysis applications";
+  } catch {
+    return "AI data analysis applications";
+  }
+}
+
+/**
+ * Validate and format JSON output
+ */
+function formatJsonOutput(text: unknown): string {
+  try {
+    const stringText = typeof text === 'string' ? text : String(text || '');
+    const jsonStr = extractJSON(stringText);
+    const parsed = JSON.parse(jsonStr);
+    return JSON.stringify(parsed);
+  } catch {
+    return JSON.stringify(getDefaultAnalysisOutput());
+  }
+}
+
+// Data analysis prompt template
 const analysisPrompt = ChatPromptTemplate.fromMessages([
-  ["system", `你是一个数据分析专家。你的职责是：
-1. 接收知识检索结果
-2. 使用 TRIVIA 工具获取补充数据
-3. 进行数据清洗和预处理 
-4. 执行深入数据分析
-5. 生成全面的分析报告
+  ["system", `You are a data analysis expert. Your responsibilities include:
+1. Receiving knowledge retrieval results
+2. Using TRIVIA tool to obtain supplementary data
+3. Performing data cleaning and preprocessing
+4. Conducting in-depth data analysis
+5. Generating comprehensive analysis reports
 
-特别重要：确保你的分析基于最近一年内的最新数据，强调数据的时效性。如果检测到数据时间较旧，请在分析中明确指出并寻求更新的数据来源。
+Important: Ensure your analysis is based on the latest data from the past year, emphasizing data timeliness. If you detect outdated data, explicitly note this in your analysis and seek more current data sources.
 
-在数据处理过程中，请：
-1. 优先使用2023年之后的数据
-2. 标注所有数据的时间点，例如"2024年Q1数据显示..."
-3. 在进行预测和趋势分析时，明确说明数据来源的时间范围
-4. 避免使用过时的报告和分析，尤其是在快速发展的技术领域
+In your data processing, please:
+1. Prioritize data from 2023 onwards
+2. Annotate all data points with timestamps, e.g., "Q1 2024 data shows..."
+3. Clearly state the time range of data sources when making predictions and trend analyses
+4. Avoid using outdated reports and analyses, especially in rapidly evolving tech fields
 
-请以 JSON 格式输出分析结果，包含以下字段：
-- data_summary: 数据概览（包含数据收集时间范围）
-- analysis_results: 分析结果，包括市场规模、增长率和关键趋势（标注时间点）
-- insights: 关键发现和未来发展预测（明确指出预测的基准时间点）
-- data_limitations: 数据局限性说明（包括时效性问题）
+Please output your analysis results in JSON format with the following fields:
+- data_summary: Data overview (including data collection time range)
+- analysis_results: Analysis results, including market size, growth rate, and key trends (with timestamps)
+- insights: Key findings and future development predictions (clearly indicating baseline time for predictions)
+- data_limitations: Data limitation notes (including timeliness issues)
 
-严格按照 JSON 格式返回，不要包含任何其他文本、代码块标记或格式说明。
-`],
-  ["human", `知识数据: {knowledge}
+Return strictly in JSON format without any other text, code block markers, or formatting instructions.`],
+  ["human", `Knowledge data: {knowledge}
   
-补充数据: {supplementaryData}`],
+Supplementary data: {supplementaryData}`],
 ]);
 
-// 创建数据分析 Agent 的搜索和整合链
+// Create data analysis agent search and integration chain
 const analysisSearchChain = RunnableSequence.from([
-  async (input: any) => {
-    console.log('Analysis agent received input type:', typeof input);
+  async (input: any): Promise<AnalysisInput> => {
+    // Normalize input
     if (typeof input !== 'object' || !input) {
-      console.warn('Analysis agent received invalid input:', input);
       input = { knowledge: 'No knowledge data provided' };
     }
     
-    // If input.knowledge is not present, use the entire input as knowledge
+    // Convert entire input to knowledge if knowledge field is missing
     if (!('knowledge' in input) && typeof input === 'object') {
-      console.log('Converting entire input object to knowledge');
       input = { knowledge: input };
     }
     
-    // 从知识中提取关键信息进行补充搜索
-    let knowledgeData;
-    try {
-      // Log the input for debugging
-      console.log('Knowledge input type:', typeof input.knowledge);
-      if (typeof input.knowledge === 'object') {
-        console.log('Knowledge input is an object, attempting to use directly');
-        // If input.knowledge is already an object, use it directly
-        knowledgeData = input.knowledge;
-      } else {
-        // Try to extract JSON if it's wrapped in markdown code blocks or handle non-string input
-        const jsonStr = extractJSON(input.knowledge);
-        console.log('Extracted JSON string length:', jsonStr.length);
-        
-        knowledgeData = JSON.parse(jsonStr);
-      }
-      console.log('Successfully parsed knowledge data');
-    } catch (error) {
-      console.error("Failed to parse knowledge data:", error);
-      // If parsing fails, use the raw input and extract key terms
-      // First ensure knowledge is a string
-      const knowledgeText = typeof input.knowledge === 'string' 
-        ? input.knowledge 
-        : extractJSON(input.knowledge);
-        
-      const searchTerms = knowledgeText
-        .replace(/```.*?```/gs, "") // Remove code blocks
-        .split(/\s+/)
-        .filter((term: string) => term.length > 3)
-        .slice(0, 5)
-        .join(" ");
-      
-      console.log('Using fallback search terms:', searchTerms);
-      knowledgeData = { 
-        results: [{ title: searchTerms || "AI data analysis applications" }]
-      };
-    }
+    // Process knowledge data
+    const knowledgeData = processKnowledgeData(input);
     
-    // Extract key terms for supplementary search
-    let keyTerms;
-    try {
-      keyTerms = knowledgeData.results
-        ? knowledgeData.results.map((result: any) => result.title || result.query || "").join(" ")
-        : "AI data analysis applications";
-    } catch (error) {
-      console.error("Error extracting key terms:", error);
-      keyTerms = "AI data analysis applications";
-    }
+    // Extract key search terms
+    const keyTerms = extractKeyTerms(knowledgeData);
     
-    if (!keyTerms || keyTerms.trim() === "") {
-      keyTerms = "AI data analysis applications";
-    }
-    
-    console.log('Using key terms for supplementary search:', keyTerms);
-    
-    // 进行补充数据搜索
+    // Fetch supplementary data
     let supplementaryData;
     try {
       supplementaryData = await triviaTool._call(keyTerms);
-      console.log('Successfully retrieved supplementary data');
-    } catch (error) {
-      console.error("Error fetching supplementary data:", error);
+    } catch {
       supplementaryData = JSON.stringify({
         results: [
           { title: "AI in data analysis market growth", content: "The AI in data analysis market is growing rapidly." }
@@ -153,7 +194,7 @@ const analysisSearchChain = RunnableSequence.from([
       });
     }
     
-    // Make sure knowledge is serialized as string for the prompt
+    // Prepare final input for the prompt
     const serializedKnowledge = typeof input.knowledge === 'object' 
       ? JSON.stringify(input.knowledge)
       : String(input.knowledge || '');
@@ -166,35 +207,7 @@ const analysisSearchChain = RunnableSequence.from([
   analysisPrompt,
   model,
   new StringOutputParser(),
-  // Ensure valid JSON output
-  (text: string): string => {
-    try {
-      // Handle non-string inputs
-      if (typeof text !== 'string') {
-        console.warn('Analysis output formatter received non-string input:', typeof text);
-        text = String(text || ''); 
-      }
-      
-      // Try to extract JSON if it's wrapped in markdown code blocks
-      const jsonStr = extractJSON(text);
-      
-      // Try to parse and re-stringify to ensure valid JSON
-      const parsed = JSON.parse(jsonStr);
-      return JSON.stringify(parsed);
-    } catch (error) {
-      console.error("Error validating analysis output as JSON:", error);
-      // Return a minimal valid JSON structure if parsing fails
-      return JSON.stringify({
-        data_summary: "Analysis of AI in data analysis applications",
-        analysis_results: {
-          market_size: "Growing market with significant potential",
-          growth_rate: "Rapid growth expected in coming years",
-          key_trends: ["Automated data processing", "Pattern recognition", "Predictive analytics"]
-        },
-        insights: ["AI is transforming data analysis workflows", "Future applications will focus on automated insights generation"]
-      });
-    }
-  }
+  formatJsonOutput
 ]);
 
 export const analysisAgent = analysisSearchChain; 
