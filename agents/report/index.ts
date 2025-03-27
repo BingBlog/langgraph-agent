@@ -11,11 +11,19 @@ const reportPrompt = ChatPromptTemplate.fromMessages([
 3. 确保报告的逻辑性和可读性
 4. 添加必要的图表和可视化建议
 
+特别强调：
+1. 报告必须基于最新数据，默认使用最近一年内的数据
+2. 明确标注所有数据和统计的时间点（例如"2024年Q1"，"截至2024年3月"等）
+3. 在执行摘要中清晰说明报告数据的时间范围
+4. 避免使用未标明时间的数据，或明确指出其时效性局限
+5. 在趋势分析和预测部分，强调预测基于的时间点，并考虑最新发展
+
 请以 JSON 格式输出报告，包含以下字段：
-- executive_summary: 执行摘要
-- detailed_findings: 详细发现，包含最新市场数据和趋势
-- recommendations: 建议和行动计划
-- visualization_suggestions: 可视化建议，用于展示关键数据和趋势
+- executive_summary: 执行摘要（包含报告数据时间范围说明）
+- detailed_findings: 详细发现，包含最新市场数据和趋势（每项数据都需标注时间点）
+- recommendations: 建议和行动计划（基于最新趋势和数据）
+- visualization_suggestions: 可视化建议，用于展示关键数据和趋势（包括时间序列可视化）
+- data_sources: 数据来源说明，包括时间范围和时效性考量
 
 严格按照 JSON 格式返回，不要包含任何其他文本、代码块标记或格式说明。
 `],

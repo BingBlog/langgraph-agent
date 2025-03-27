@@ -29,17 +29,35 @@ export class TriviaSearchTool extends Tool {
       // Use the tavily function without TypeScript checking
       // @ts-ignore
       const client = tavilyModule.tavily({ apiKey });
-      
-      // Make the search request with simple string query
-      // @ts-ignore - Ignore TypeScript issues with the package
-      const data = await client.search(input);
-      
-      console.log('Trivia search result received');
-      return JSON.stringify(data);
-    } catch (error) {
+
+      // Use basic search directly since it works reliably
+      try {
+        console.log(`Performing Trivia search with query: ${input}`);
+        
+        // Use basic search with minimal parameters that are known to work
+        const data = await client.search(input);
+        
+        console.log('Trivia search successful');
+        return JSON.stringify(data);
+      } catch (error: any) {
+        console.error(`Search error: ${error}`);
+        // Return a structured fallback result
+        return JSON.stringify({
+          results: [{ 
+            title: "Search Failed", 
+            content: `Could not retrieve search results. Error: ${error.message || 'Unknown error'}`,
+            score: 1.0 
+          }]
+        });
+      }
+    } catch (error: any) {
       console.error(`Error searching TRIVIA: ${error}`);
       return JSON.stringify({
-        results: [{ title: "Search Error", content: `Failed to retrieve search results: ${error}` }]
+        results: [{ 
+          title: "API Error", 
+          content: `Failed to initialize search: ${error.message || error}`,
+          score: 1.0 
+        }]
       });
     }
   }
