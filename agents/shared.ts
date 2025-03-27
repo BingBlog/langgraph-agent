@@ -15,7 +15,32 @@ export const model = new ChatOpenAI({
 });
 
 // 创建 TRIVIA 工具实例
-export const triviaTool = new TriviaSearchTool();
+export const triviaTool = {
+  _call: async (query: string) => {
+    try {
+      // Log the attempt
+      console.log(`Attempting Trivia search with query: ${query}`);
+      
+      // Check if API key exists
+      if (!process.env.TRIVIA_API_KEY) {
+        console.error("Missing TRIVIA_API_KEY environment variable");
+        return JSON.stringify({
+          results: [{ title: "API Error", content: "Missing API credentials" }]
+        });
+      }
+      
+      // Make the actual API call
+      const result = await new TriviaSearchTool()._call(query);
+      return result;
+      
+    } catch (error) {
+      console.error("Error in Trivia API call:", error);
+      return JSON.stringify({
+        results: [{ title: "Search Error", content: "Failed to retrieve search results" }]
+      });
+    }
+  }
+};
 
 // 定义搜索函数
 export const searchFunction = {

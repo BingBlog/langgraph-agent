@@ -1,5 +1,11 @@
 import { Tool } from "@langchain/core/tools";
 import { config } from "dotenv";
+// Import tavily using dynamic import to avoid TypeScript errors
+import('@tavily/core').then(module => {
+  tavilyModule = module;
+});
+
+let tavilyModule: any = null;
 
 config();
 
@@ -9,27 +15,32 @@ export class TriviaSearchTool extends Tool {
 
   async _call(input: string): Promise<string> {
     try {
-      const response = await fetch("https://api.trivia.com/v1/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.TRIVIA_API_KEY}`,
-        },
-        body: JSON.stringify({
-          query: input,
-          max_results: 5,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`TRIVIA API error: ${response.statusText}`);
+      // Initialize Tavily client with API key
+      const apiKey = process.env.TRIVIA_API_KEY || "";
+      if (!apiKey) {
+        throw new Error("Missing TRIVIA_API_KEY environment variable");
       }
-
-      const data = await response.json();
-      console.log('trivia search result', data);
+      
+      // Ensure the tavily module is loaded
+      if (!tavilyModule) {
+        tavilyModule = await import('@tavily/core');
+      }
+      
+      // Use the tavily function without TypeScript checking
+      // @ts-ignore
+      const client = tavilyModule.tavily({ apiKey });
+      
+      // Make the search request with simple string query
+      // @ts-ignore - Ignore TypeScript issues with the package
+      const data = await client.search(input);
+      
+      console.log('Trivia search result received');
       return JSON.stringify(data);
     } catch (error) {
-      return `Error searching TRIVIA: ${error}`;
+      console.error(`Error searching TRIVIA: ${error}`);
+      return JSON.stringify({
+        results: [{ title: "Search Error", content: `Failed to retrieve search results: ${error}` }]
+      });
     }
   }
 } 

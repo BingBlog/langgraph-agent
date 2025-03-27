@@ -17,6 +17,9 @@ dependencies:
   '@langchain/openai':
     specifier: ^0.5.0
     version: 0.5.0(@langchain/core@0.3.43)
+  '@tavily/core':
+    specifier: ^0.3.3
+    version: 0.3.3
   dotenv:
     specifier: ^16.4.7
     version: 16.4.7
@@ -658,6 +661,15 @@ packages:
     hasBin: true
     dependencies:
       playwright: 1.51.1
+    dev: false
+
+  /@tavily/core@0.3.3:
+    resolution: {integrity: sha512-Dn1TvtVo/btPDWXnH+bhlQxj+YGW0rkM1PUNBxJeEnjHBbuhjjDsibiqoe/wObMzrF44+gBB59NJ3MNduVTjMw==}
+    dependencies:
+      axios: 1.8.4(debug@4.4.0)
+      js-tiktoken: 1.0.19
+    transitivePeerDependencies:
+      - debug
     dev: false
 
   /@tokenizer/token@0.3.0:
