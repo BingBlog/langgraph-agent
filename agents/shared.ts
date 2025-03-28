@@ -1,6 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { TriviaSearchTool } from "../tools/trivia.js";
 import { config } from "dotenv";
+import { langfuse } from "./langfuse.js";
 
 config();
 

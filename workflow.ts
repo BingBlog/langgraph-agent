@@ -1,6 +1,7 @@
 import { plannerAgent, knowledgeAgent, analysisAgent, reportAgent } from "./agents/index.js";
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { Annotation } from "@langchain/langgraph";
+import { createWorkflowTrace, createSpan } from "./agents/langfuse.js";
 
 // 定义工作流状态
 const WorkflowState = Annotation.Root({
@@ -9,6 +10,7 @@ const WorkflowState = Annotation.Root({
   knowledge: Annotation<string>(),
   analysis: Annotation<string>(),
   report: Annotation<string>(),
+  trace: Annotation<any>(), // Add trace to the state
 });
 
 // Helper function to handle errors and ensure data is properly JSON stringified
@@ -29,11 +31,18 @@ const ensureJSONString = (data: any): string => {
 const workflow = new StateGraph(WorkflowState)
   .addNode("planNode", async (state) => {
     console.log("\nStep 1: Planning...");
+    // Create a span for this step
+    const planSpan = createSpan(state.trace, "Planning Step", { input: state.input });
     try {
       const result = await plannerAgent.invoke({ input: state.input });
-      return { plan: ensureJSONString(result) };
+      const resultString = ensureJSONString(result);
+      // End the span with success
+      planSpan.end({ output: resultString });
+      return { plan: resultString };
     } catch (error) {
       console.error("Error in planning step:", error);
+      // End the span with error
+      planSpan.end({ error: String(error) });
       // Return a default plan in case of error
       return { 
         plan: JSON.stringify({
@@ -52,11 +61,18 @@ const workflow = new StateGraph(WorkflowState)
   })
   .addNode("knowledgeNode", async (state) => {
     console.log("\nStep 2: Knowledge Retrieval...");
+    // Create a span for this step
+    const knowledgeSpan = createSpan(state.trace, "Knowledge Retrieval Step", { plan: state.plan });
     try {
       const result = await knowledgeAgent.invoke({ plan: state.plan });
-      return { knowledge: ensureJSONString(result) };
+      const resultString = ensureJSONString(result);
+      // End the span with success
+      knowledgeSpan.end({ output: resultString });
+      return { knowledge: resultString };
     } catch (error) {
       console.error("Error in knowledge retrieval step:", error);
+      // End the span with error
+      knowledgeSpan.end({ error: String(error) });
       // Return default knowledge in case of error
       return { 
         knowledge: JSON.stringify({
@@ -69,12 +85,19 @@ const workflow = new StateGraph(WorkflowState)
   })
   .addNode("analysisNode", async (state) => {
     console.log("\nStep 3: Analysis...");
+    // Create a span for this step
+    const analysisSpan = createSpan(state.trace, "Analysis Step", { knowledge: state.knowledge });
     try {
       console.log("Passing knowledge to analysis agent, type:", typeof state.knowledge);
       const result = await analysisAgent.invoke({ knowledge: state.knowledge });
-      return { analysis: ensureJSONString(result) };
+      const resultString = ensureJSONString(result);
+      // End the span with success
+      analysisSpan.end({ output: resultString });
+      return { analysis: resultString };
     } catch (error) {
       console.error("Error in analysis step:", error);
+      // End the span with error
+      analysisSpan.end({ error: String(error) });
       // Return default analysis in case of error
       return { 
         analysis: JSON.stringify({
@@ -87,6 +110,12 @@ const workflow = new StateGraph(WorkflowState)
   })
   .addNode("reportNode", async (state) => {
     console.log("\nStep 4: Report Generation...");
+    // Create a span for this step
+    const reportSpan = createSpan(state.trace, "Report Generation Step", {
+      plan: state.plan,
+      knowledge: state.knowledge,
+      analysis: state.analysis
+    });
     try {
       // Pass the individual components as proper inputs
       const result = await reportAgent.invoke({
@@ -94,9 +123,14 @@ const workflow = new StateGraph(WorkflowState)
         knowledge: state.knowledge,
         analysis: state.analysis
       });
-      return { report: ensureJSONString(result) };
+      const resultString = ensureJSONString(result);
+      // End the span with success
+      reportSpan.end({ output: resultString });
+      return { report: resultString };
     } catch (error) {
       console.error("Error in report generation step:", error);
+      // End the span with error
+      reportSpan.end({ error: String(error) });
       // Return default report in case of error
       return { 
         report: JSON.stringify({
@@ -121,7 +155,11 @@ const compiledWorkflow = workflow.compile();
 export const multiAgentWorkflow = {
   async run(input: string) {
     try {
-      const result = await compiledWorkflow.invoke({ input });
+      // Initialize trace for the entire workflow
+      const trace = createWorkflowTrace(input);
+      // Start the workflow with trace in the state
+      const result = await compiledWorkflow.invoke({ input, trace });
+      // Note: Not ending the trace as the API has changed
       return result;
     } catch (error) {
       console.error("Error in workflow:", error);
